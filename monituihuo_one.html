@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Monituihuo Example</title>
+    <script src="d3.js" charset="utf-8"></script>
+<style>
+.MyText {
+    fill: white;
+    text-anchor: middle;
+}
+.line {
+      fill:none;
+      stroke:black;
+      stroke-width:1.5px;
+}
+.axis path,
+.axis line {
+        fill: none;
+        stroke: black;
+        shape-rendering: crispEdges;
+}
+.axis text {
+          font-family: sans-serif;
+          font-size: 11px;
+}
+.tooltip{
+   font-family: simsun;
+   font-size: 15px;
+   width: 120;
+   height: auto;
+   position: absolute;
+   text-align: center;
+    border-style: solid; 
+   border-width: 1px;
+   background-color: white;
+   border-radius: 5px;
+  }
+ </style>
+</head>
+
+  <body>
+    <div id="content_wrapper">
+    <input type="button" value="reset" id='reset_btn' />
+    </div>
+    
+  </body>
+
+<script>
+  
+    var nodes = [0,1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    var width = 1000;
+    var height = 500;
+    var padding=30;
+    var dt=[];
+    var edges=[];
+    var parsedt=d3.time.format("%Y/%m/%d %H:%M").parse;
+
+    function Vertex(){
+    }
+    Vertex.prototype.setId = function(id){
+        this.id = id;
+    }
+    Vertex.prototype.getId = function(){
+        return this.id;
+    }
+    Vertex.prototype.setLoc = function(loc){
+        this.loc = loc;
+    }
+    Vertex.prototype.getLoc = function(){
+        return this.loc;
+    }
+//最小化边长的模拟退火
+    function sortByMinLen(nodes,edges){
+        var map = d3.map();
+        var m = new Array(nodes.length);
+        for(var i = 0;i < m.length;i++){
+            m[i] = new Array(nodes.length);
+            map.set(nodes[i].id,i);
+        for(var j = 0;j < m[i].length;j++){
+             m[i][j] = 0;}
+        }
+
+        for(var i  = 0;i < edges.length;i++){
+        //  var p = map.get(edges[i].from);
+        //  var q = map.get(edges[i].to);
+            var p = edges[i].from;
+            var q = edges[i].to;
+            m[p][q] ++;
+        }
+
+        var vs = new Array(nodes.length);
+        for(var i = 0;i < vs.length;i++){
+            vs[i] = new Vertex();
+            vs[i].setId(i);
+            vs[i].setLoc(i);
+        }
+
+        var links = [];
+        for(var i = 0;i < m.length;i++){
+        for(var j = i+1;j < m[i].length;j++){
+            if(m[i][j]+m[j][i]>0){
+            var e = {};
+            e.from = vs[i];
+            e.to = vs[j];
+            e.weight = m[i][j]+m[j][i];
+            links.push(e);}
+        }}
+
+        var t = 200;//初始温度
+        var tmin = 0.01;//终止温度
+        var lamd = 0.995;//温度迭代系数
+
+        var e_old;//当前状态下的能量
+        var e_new;//新的状态下的能量
+        var e_delt;//能量差
+
+        var sa,sb;//要交换的两个节点的索引
+        var MIN = Number.MAX_VALUE;
+        var order = new Array(vs.length);
+
+        while(t>tmin){
+            e_old = e_new = 0;
+
+            //计算当前状态下的能量
+            for(var i = 0;i < links.length;i++){
+                e_old += Math.abs(links[i].from.getLoc()-links[i].to.getLoc())*links[i].weight/links.length;
+            }
+    
+            if(e_old<MIN){
+                MIN = e_old;
+            for(var i = 0;i < vs.length;i++){
+                order[i] = vs[i].getLoc();
+            } }
+    //  console.log(order);
+
+            //随机产生两个位置，交换该位置处的两个结点
+            sa = Math.floor(Math.random()*vs.length);
+            do{
+            sb = Math.floor(Math.random()*vs.length); 
+            }while(sb==sa);
+            var tmp = vs[sa].getLoc();
+            vs[sa].setLoc(vs[sb].getLoc());
+            vs[sb].setLoc(tmp);
+    
+            //计算交换结点位置后的能量
+            for(var i = 0;i < links.length;i++){
+                e_new += Math.abs(links[i].from.getLoc()-links[i].to.getLoc())*links[i].weight*1.0/links.length;
+            }
+    
+        //  console.log([e_old,e_new])
+
+            if(e_new>=e_old&&Math.exp((e_old-e_new)/t)<=Math.random()){
+            //拒绝接受该次交换
+             tmp = vs[sa].getLoc();
+             vs[sa].setLoc(vs[sb].getLoc());
+             vs[sb].setLoc(tmp);
+            }
+    
+            t*=lamd;
+            }
+        // return [order,m];
+        return order;
+    }
+
+    d3.csv("edgestwo.csv",function(error,csvdata){
+            if(error){console.log(error); }
+            else{
+              for (var i=0;i<csvdata.length;i++){
+              edges.push(csvdata[i]);
+              dt.push(parsedt(csvdata[i].dt));}
+        //console.log(edges);
+
+        var result = sortByMinLen(nodes,edges);
+    //  console.log(result);
+        var nid=[];
+        for (i=0;i<result.length;i++){
+        if(result[i]!=0){ nid.push(result[i]);} }
+    //console.log(nid);
+
+            var svg = d3.select("body")
+                   .append("svg")
+                   .attr("width", width)
+                   .attr("height", height); 
+            var xScale = d3.time.scale()  
+                   .domain([d3.min(edges,function(d){return d.timestamp;}),
+                            d3.max(edges,function(d){return d.timestamp;})])  
+                   .range([padding,width-padding-10]); 
+            var yScale = d3.scale.ordinal()  
+                    .domain(nid)
+                    .rangeRoundBands([height-padding,padding]);
+            var xScale2 = d3.time.scale()
+                  .domain(d3.extent(dt))
+                 .range([0,width-padding*2]); 
+            var xAxis = d3.svg.axis()
+                  .scale(xScale2)
+                  .orient("bottom")
+                  .tickFormat(d3.time.format("%d-%H:%M"));
+            var tooltip = d3.select("body")
+                .append("div")
+                .attr("class","tooltip")
+                .style("opacity",0.0);
+      
+            function creatimeaxis(){
+                svg.append("g")
+               .attr("class", "axis")
+                .attr("transform", "translate("+padding+"," + (height-padding*2-1) + ")")
+                .call(xAxis);
+            };
+            function createyline(){   //画竖线
+                var lines=svg.selectAll('line')
+                    .data(edges)
+                    .enter()
+                    .append('line').attr("class",".line")
+                    .attr('x1', function(d,i) {return xScale(d.timestamp); })
+                    .attr('y1', function(d,i) { return yScale(d.from); })
+                    .attr('x2', function(d,i) { return xScale(d.timestamp);})
+                    .attr('y2',function(d,i) { return yScale(d.to); })           //聚类与节点之间，节点与节点之间颜色不同
+                    .attr('stroke','steelblue')
+                    .attr('fill','#fff')
+                    .attr('stroke-width','1')
+                    .on("mouseover",function(d){ tooltip.html(d.dt +"<br />"+ d.from + " to " + d.to)
+                        .style("left", (d3.event.pageX) + "px")
+                        .style("top", (d3.event.pageY + 20) + "px")
+                        .style("opacity",1.0);})
+                    .on("mousemove",function(d){tooltip.style("left", (d3.event.pageX) + "px")
+                        .style("top", (d3.event.pageY + 20) + "px"); })
+                    .on("mouseout",function(d){ tooltip.style("opacity",0.0);});
+            };            
+            function createxline(nid){    //画横线
+                for(i=0;i<nid.length;i++){
+                    svg.append('line')
+                    .attr('x1', padding)
+                    .attr('y1', yScale(nid[i]))
+                    .attr('x2', width-padding)
+                    .attr('y2',yScale(nid[i]))
+                    .attr('stroke','gray')
+                    .attr('fill','#fff')
+                    .attr('stroke-width','1');  }
+            };
+            function createtext(){
+                for(i=1;i<=14;i++)
+                    {svg.append('text')
+                    .attr('x',width-padding)
+                    .attr('y',yScale(i))
+                    .attr("font-size",15)
+                    .attr("font-family","simsun")
+                    .text(i); }
+            };
+             
+            creatimeaxis(); 
+            createyline();
+            createxline(nid);
+            createtext();
+
+    d3.select('#reset_btn').on('click', function(){
+        result = []; nid=[];
+        result = sortByMinLen(nodes,edges);
+        for (i=0;i<result.length;i++){
+            if(result[i]!=0){
+            nid.push(result[i]);} }
+    //console.log(nid);
+        yScale = d3.scale.ordinal()  
+                    .domain(nid)
+                    .rangeRoundBands([height-padding,padding]);
+        d3.selectAll('line').remove();
+        d3.selectAll('text').remove();
+        d3.selectAll('g').remove();
+        creatimeaxis();
+        createyline();
+        createxline(nid);
+        createtext();
+    });
+
+
+  }});
+ 
+  </script>
+</html>
